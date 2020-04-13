@@ -1,0 +1,38 @@
+$script_mysql = <<-SCRIPT
+  apt update && apt install -y mysql-server-5.7 && \
+  mysql -e "create user 'lakshamana'@'%' identified by 'lakshamana';"
+SCRIPT
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "hashicorp/bionic64"
+
+  config.vm.define "mysqldb" do |mysql|
+    mysql.vm.network "public_network", ip: "192.168.15.24"
+
+    mysql.vm.provision "shell", 
+      inline: "cat /config/id_lakshamana.pub >> .ssh/authorized_keys"
+
+    mysql.vm.provision "shell", inline: $script_mysql
+
+    mysql.vm.provision "shell", 
+      inline: "cat /config/mysqld.cnf > /etc/mysql/mysql.conf.d/mysqld.cnf"
+
+    mysql.vm.provision "shell", inline: "service mysql restart"
+
+    mysql.vm.synced_folder "./config", "/config"
+    mysql.vm.synced_folder ".", "/vagrant", disabled: true
+  end
+
+  config.vm.define "web" do |web|
+    web.vm.network :forwarded_port, guest: 80, host: 4567
+    web.vm.network "public_network", ip: "192.168.15.25"
+
+    web.vm.provision "shell", 
+      inline: "apt update && apt install -y puppet"
+
+    web.vm.provision "puppet" do |puppet|
+      puppet.manifests_path = "./config/manifests"
+      puppet.manifest_file = "phpweb.pp"
+    end
+  end
+end
